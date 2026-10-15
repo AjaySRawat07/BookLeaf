@@ -1,0 +1,197 @@
+// PostgreSQL Production Schema for BookLeaf Author Support & Communication Portal
+// Drop-in replacement for PostgreSQL environments (Neon, Supabase, Railway, AWS RDS)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  AUTHOR
+  ADMIN
+}
+
+enum BookStatus {
+  PUBLISHED
+  IN_PRODUCTION
+  DRAFT
+}
+
+enum ProductionStage {
+  MANUSCRIPT_RECEIVED
+  EDITING
+  COVER_DESIGN
+  TYPESETTING
+  PROOFREADING
+  ISBN_ASSIGNMENT
+  PRINTING
+  DISTRIBUTION_SETUP
+  PUBLISHED_AND_LIVE
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum TicketCategory {
+  ROYALTY_AND_PAYMENTS
+  ISBN_AND_METADATA
+  PRINTING_AND_QUALITY
+  DISTRIBUTION_AND_AVAILABILITY
+  BOOK_STATUS_AND_PRODUCTION
+  GENERAL_INQUIRY
+}
+
+enum TicketPriority {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+model User {
+  id           String          @id @default(cuid())
+  email        String          @unique
+  passwordHash String
+  name         String
+  role         Role            @default(AUTHOR)
+  phone        String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  authorProfile   AuthorProfile?
+  tickets         Ticket[]         @relation("AuthorTickets")
+  assignedTickets Ticket[]         @relation("AssignedAdminTickets")
+  ticketMessages  TicketMessage[]
+  activities      TicketActivity[]
+
+  @@index([email])
+  @@index([role])
+}
+
+model AuthorProfile {
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  authorName          String
+  penName             String?
+  bio                 String?
+  country             String   @default("India")
+  bankAccountLinked   Boolean  @default(true)
+  bankName            String?
+  accountNumberMasked String?
+  ifscCode            String?
+  panMasked           String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  books               Book[]
+
+  @@index([authorName])
+}
+
+model Book {
+  id                  String           @id @default(cuid())
+  authorId            String
+  author              AuthorProfile    @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  title               String
+  isbn                String           @unique
+  genre               String
+  publicationDate     DateTime?
+  status              BookStatus       @default(PUBLISHED)
+  productionStage     ProductionStage?
+  mrp                 Decimal          @db.Decimal(10, 2)
+  printingCost        Decimal          @default(0) @db.Decimal(10, 2)
+  platformCommission  Decimal          @default(0) @db.Decimal(10, 2)
+  shippingCharge      Decimal          @default(0) @db.Decimal(10, 2)
+  copiesSold          Int              @default(0)
+  totalRoyaltyEarned  Decimal          @default(0) @db.Decimal(10, 2)
+  royaltyPaid         Decimal          @default(0) @db.Decimal(10, 2)
+  royaltyPending      Decimal          @default(0) @db.Decimal(10, 2)
+  platforms           Json?
+  coverImageUrl       String?
+  synopsis            String?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  tickets             Ticket[]
+
+  @@index([authorId])
+  @@index([status])
+  @@index([isbn])
+}
+
+model Ticket {
+  id                  String           @id @default(cuid())
+  ticketNumber        String           @unique
+  authorId            String
+  author              User             @relation("AuthorTickets", fields: [authorId], references: [id], onDelete: Cascade)
+  bookId              String?
+  book                Book?            @relation(fields: [bookId], references: [id], onDelete: SetNull)
+  queryType           String           @default("BOOK_SPECIFIC")
+  subject             String
+  description         String
+  attachmentUrl       String?
+  status              TicketStatus     @default(OPEN)
+  category            String           @default("General Inquiry")
+  aiCategory          String?
+  categoryOverridden  Boolean          @default(false)
+  priority            TicketPriority   @default(MEDIUM)
+  aiPriority          String?
+  priorityOverridden  Boolean          @default(false)
+  aiConfidence        Float?
+  aiRationale         String?
+  aiDraft             String?
+  aiDraftGeneratedAt  DateTime?
+  assignedAdminId     String?
+  assignedAdmin       User?            @relation("AssignedAdminTickets", fields: [assignedAdminId], references: [id], onDelete: SetNull)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  messages            TicketMessage[]
+  activities          TicketActivity[]
+
+  @@index([authorId])
+  @@index([assignedAdminId])
+  @@index([status])
+  @@index([category])
+  @@index([priority])
+  @@index([createdAt])
+}
+
+model TicketMessage {
+  id             String         @id @default(cuid())
+  ticketId       String
+  ticket         Ticket         @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  senderId       String
+  sender         User           @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  senderRole     Role
+  message        String
+  isInternalNote Boolean        @default(false)
+  createdAt      DateTime       @default(now())
+
+  @@index([ticketId])
+  @@index([senderId])
+  @@index([isInternalNote])
+}
+
+model TicketActivity {
+  id        String   @id @default(cuid())
+  ticketId  String
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  actorId   String?
+  actor     User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action    String
+  details   Json?
+  createdAt DateTime @default(now())
+
+  @@index([ticketId])
+  @@index([actorId])
+}

@@ -1,0 +1,152 @@
+// Prisma schema for BookLeaf Author Support & Communication Portal
+// Default provider is SQLite for zero-configuration, robust local development & testing.
+// A drop-in PostgreSQL schema is also maintained in prisma/schema.postgresql.prisma for production.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String          @id @default(cuid())
+  email        String          @unique
+  passwordHash String
+  name         String
+  role         String          // "AUTHOR" | "ADMIN"
+  phone        String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  authorProfile   AuthorProfile?
+  tickets         Ticket[]         @relation("AuthorTickets")
+  assignedTickets Ticket[]         @relation("AssignedAdminTickets")
+  ticketMessages  TicketMessage[]
+  activities      TicketActivity[]
+
+  @@index([email])
+  @@index([role])
+}
+
+model AuthorProfile {
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  authorName          String
+  penName             String?
+  bio                 String?
+  country             String   @default("India")
+  bankAccountLinked   Boolean  @default(true)
+  bankName            String?
+  accountNumberMasked String?  // e.g. "•••• •••• 4821"
+  ifscCode            String?  // e.g. "HDFC0001234"
+  panMasked           String?  // e.g. "ABCDE••••F"
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  books               Book[]
+
+  @@index([authorName])
+}
+
+model Book {
+  id                  String         @id @default(cuid())
+  authorId            String
+  author              AuthorProfile  @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  title               String
+  isbn                String         @unique
+  genre               String
+  publicationDate     DateTime?
+  status              String         // "PUBLISHED" | "IN_PRODUCTION" | "DRAFT"
+  productionStage     String?        // "MANUSCRIPT_RECEIVED" | "EDITING" | "COVER_DESIGN" | "TYPESETTING" | "PROOFREADING" | "ISBN_ASSIGNMENT" | "PRINTING" | "DISTRIBUTION_SETUP" | "PUBLISHED_AND_LIVE"
+  mrp                 Float
+  printingCost        Float          @default(0)
+  platformCommission  Float          @default(0)
+  shippingCharge      Float          @default(0)
+  copiesSold          Int            @default(0)
+  totalRoyaltyEarned  Float          @default(0)
+  royaltyPaid         Float          @default(0)
+  royaltyPending      Float          @default(0)
+  platforms           String?        // JSON string of live platforms
+  coverImageUrl       String?
+  synopsis            String?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  tickets             Ticket[]
+
+  @@index([authorId])
+  @@index([status])
+  @@index([isbn])
+}
+
+model Ticket {
+  id                  String           @id @default(cuid())
+  ticketNumber        String           @unique // e.g. "BL-8012"
+  authorId            String
+  author              User             @relation("AuthorTickets", fields: [authorId], references: [id], onDelete: Cascade)
+  bookId              String?
+  book                Book?            @relation(fields: [bookId], references: [id], onDelete: SetNull)
+  queryType           String           @default("BOOK_SPECIFIC") // "BOOK_SPECIFIC" | "GENERAL_ACCOUNT"
+  subject             String
+  description         String
+  attachmentUrl       String?
+  status              String           @default("OPEN") // "OPEN" | "IN_PROGRESS" | "RESOLVED" | "CLOSED"
+  category            String           @default("General Inquiry") // Exact 6 categories from assignment
+  aiCategory          String?
+  categoryOverridden  Boolean          @default(false)
+  priority            String           @default("Medium") // "Critical" | "High" | "Medium" | "Low"
+  aiPriority          String?
+  priorityOverridden  Boolean          @default(false)
+  aiConfidence        Float?
+  aiRationale         String?
+  aiDraft             String?
+  aiDraftGeneratedAt  DateTime?
+  assignedAdminId     String?
+  assignedAdmin       User?            @relation("AssignedAdminTickets", fields: [assignedAdminId], references: [id], onDelete: SetNull)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  messages            TicketMessage[]
+  activities          TicketActivity[]
+
+  @@index([authorId])
+  @@index([assignedAdminId])
+  @@index([status])
+  @@index([category])
+  @@index([priority])
+  @@index([createdAt])
+}
+
+model TicketMessage {
+  id             String         @id @default(cuid())
+  ticketId       String
+  ticket         Ticket         @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  senderId       String
+  sender         User           @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  senderRole     String         // "AUTHOR" | "ADMIN"
+  message        String
+  isInternalNote Boolean        @default(false) // PRIVATE to Admins ONLY
+  createdAt      DateTime       @default(now())
+
+  @@index([ticketId])
+  @@index([senderId])
+  @@index([isInternalNote])
+}
+
+model TicketActivity {
+  id        String   @id @default(cuid())
+  ticketId  String
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  actorId   String?
+  actor     User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action    String   // "CREATED" | "STATUS_CHANGED" | "PRIORITY_OVERRIDDEN" | "CATEGORY_OVERRIDDEN" | "ASSIGNED" | "PUBLIC_REPLY" | "NOTE_ADDED" | "AI_CLASSIFIED" | "AI_DRAFT_GENERATED"
+  details   String?  // JSON string
+  createdAt DateTime @default(now())
+
+  @@index([ticketId])
+  @@index([actorId])
+}
